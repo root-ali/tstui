@@ -168,7 +168,7 @@ Flags win over environment variables, and environment variables over the config 
 | `keybindings.focus` | `Ctrl-B` | The prefix key in the terminal: `Ctrl-<letter>` or `Alt-<letter>` |
 | `terminal.scrollback` | `10000` | Lines kept per session, 0 to 1000000 |
 | `terminal.auto_reconnect` | `false` | Restart a session that dropped (non-zero exit without a tsh error, or host unreachable) |
-| `terminal.mouse` | `true` | Mouse selection, wheel and clicks. Shift+drag still selects through a program that wants the mouse. |
+| `terminal.mouse` | `true` | Mouse selection (drag, double-click a word, triple-click a line; copied to the clipboard), wheel and clicks. Hold Shift to select through a program that wants the mouse. Set `false` to use your terminal's own selection instead. |
 | `tsh_prompts.<kind>` | | Extra regular expressions for tsh's login prompts and errors. Kinds: `password`, `otp`, `otp_or_tap`, `tap`, `pin`, `choice`, `key_tapped`, `sso_link`, `locked`, `connector_not_found`, `wrong_credentials`, `tls`, `network`. |
 | `port_forwards[].name` | required | Label in the `:pf` view, unique |
 | `port_forwards[].host` | required | Server hostname |

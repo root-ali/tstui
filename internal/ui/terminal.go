@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
+	"unicode"
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/gdamore/tcell/v2"
@@ -42,6 +44,11 @@ type TerminalView struct {
 	sel struct {
 		on, dragging bool
 		from, to     cellPos
+		// wordAt and wordLine are when and on which line the last
+		// double-click selected a word: a click right after it on the
+		// same line (a triple-click) selects the line.
+		wordAt   time.Time
+		wordLine int
 	}
 	buttons tcell.ButtonMask // mouse buttons held, for forwarding releases
 
@@ -295,8 +302,9 @@ func (v *TerminalView) PasteHandler() func(string, func(tview.Primitive)) {
 
 // MouseHandler implements tview.Primitive. A program that asked for mouse
 // reports gets them (hold Shift to select instead); otherwise the wheel
-// scrolls the scrollback and dragging selects text, copied to the
-// clipboard with OSC 52 on release.
+// scrolls the scrollback, and dragging, a double-click (a word) or a
+// triple-click (a line) selects text, copied to the clipboard with
+// OSC 52.
 func (v *TerminalView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
 	return v.WrapMouseHandler(func(action tview.MouseAction, ev *tcell.EventMouse, _ func(tview.Primitive)) (bool, tview.Primitive) {
 		mx, my := ev.Position()
@@ -402,8 +410,90 @@ func (v *TerminalView) localMouse(action tview.MouseAction, col, row int, modes 
 				v.copySelection()
 			}
 		}
+	case tview.MouseLeftDoubleClick:
+		if v.selectWord(pos) {
+			v.sel.wordAt, v.sel.wordLine = time.Now(), pos.line
+			v.copySelection()
+		}
+	case tview.MouseLeftClick:
+		if !v.sel.wordAt.IsZero() && time.Since(v.sel.wordAt) <= tview.DoubleClickInterval && pos.line == v.sel.wordLine {
+			v.sel.wordAt = time.Time{}
+			if v.selectLine(pos.line) {
+				v.copySelection()
+			}
+		}
 	}
 	return true, nil
+}
+
+// selectWord selects the word under p, like a terminal's double-click.
+// It reports false (and selects nothing) on a blank or a lone symbol.
+func (v *TerminalView) selectWord(p cellPos) bool {
+	from, to, ok := p, p, false
+	v.sess.Terminal().View(func(s *vterm.Screen) {
+		cols, _ := s.Size()
+		if p.line < 0 || p.line >= s.Lines() || p.col < 0 || p.col >= cols {
+			return
+		}
+		at := p.col
+		for at > 0 && s.Cell(p.line, at).Width == 0 {
+			at-- // the right half of a wide character
+		}
+		if !isWordCell(s.Cell(p.line, at)) {
+			return
+		}
+		lo, hi := at, at
+		for lo > 0 {
+			c := s.Cell(p.line, lo-1)
+			if c.Width == 0 && lo-2 >= 0 {
+				c = s.Cell(p.line, lo-2)
+			}
+			if !isWordCell(c) {
+				break
+			}
+			lo--
+		}
+		for hi+1 < cols {
+			c := s.Cell(p.line, hi+1)
+			if c.Width != 0 && !isWordCell(c) {
+				break
+			}
+			hi++
+		}
+		from, to, ok = cellPos{p.line, lo}, cellPos{p.line, hi}, true
+	})
+	if ok {
+		v.sel.from, v.sel.to, v.sel.on = from, to, true
+	}
+	return ok
+}
+
+// selectLine selects all of line; false when the line is blank.
+func (v *TerminalView) selectLine(line int) bool {
+	var cols int
+	var blank bool
+	v.sess.Terminal().View(func(s *vterm.Screen) {
+		cols, _ = s.Size()
+		blank = line < 0 || line >= s.Lines() || s.LineText(line, 0, -1) == ""
+	})
+	if blank {
+		return false
+	}
+	v.sel.from, v.sel.to, v.sel.on = cellPos{line, 0}, cellPos{line, cols - 1}, true
+	return true
+}
+
+// wordSymbols are the characters, besides letters and digits, that a
+// double-click keeps in a word, so paths, hostnames, IPs and user@host
+// come out whole.
+const wordSymbols = "_-./~+@%\\"
+
+func isWordCell(c vterm.Cell) bool {
+	r := []rune(c.Content)
+	if len(r) == 0 {
+		return false
+	}
+	return unicode.IsLetter(r[0]) || unicode.IsDigit(r[0]) || strings.ContainsRune(wordSymbols, r[0])
 }
 
 func (v *TerminalView) selected(p cellPos) bool {

@@ -329,3 +329,93 @@ func TestParsePrefix(t *testing.T) {
 		}
 	}
 }
+
+// click sends what tview sends for one click: down, up, then click or,
+// for clickAction MouseLeftDoubleClick, the double-click.
+func (f *termFixture) click(x, y int, clickAction tview.MouseAction, mods tcell.ModMask) {
+	f.mouse(tview.MouseLeftDown, x, y, tcell.Button1, mods)
+	f.mouse(tview.MouseLeftUp, x, y, 0, mods)
+	f.mouse(clickAction, x, y, 0, mods)
+}
+
+func TestTerminalViewDoubleClickSelectsWord(t *testing.T) {
+	// The pane's inner area starts at (1, 1): column c is x = c+1.
+	tests := []struct {
+		name string
+		x    int
+		want string
+	}{
+		{"a word", 2, "ssh"},
+		{"user@host, from its last letter", 19, "ali@web-01.prod"},
+		{"a path, from the middle", 25, "/var/log/x.log"},
+		{"a blank", 4, ""},
+		{"a lone symbol", 36, ""},
+		{"past the text", 40, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newTermFixture(t)
+			f.draw()
+			f.output("ssh ali@web-01.prod /var/log/x.log | g\r\n", "| g")
+			f.draw()
+			f.click(tt.x, 1, tview.MouseLeftClick, 0)
+			f.click(tt.x, 1, tview.MouseLeftDoubleClick, 0)
+			if got := f.view.SelectionText(); got != tt.want {
+				t.Fatalf("selection %q, want %q", got, tt.want)
+			}
+			if got := string(f.screen.GetClipboardData()); got != tt.want {
+				t.Fatalf("clipboard %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTerminalViewTripleClickSelectsLine(t *testing.T) {
+	f := newTermFixture(t)
+	f.draw()
+	f.output("first line here\r\nsecond line\r\n", "second line")
+	f.draw()
+	f.click(8, 1, tview.MouseLeftClick, 0)
+	f.click(8, 1, tview.MouseLeftDoubleClick, 0)
+	if got := f.view.SelectionText(); got != "line" {
+		t.Fatalf("double-click selected %q", got)
+	}
+	f.click(8, 1, tview.MouseLeftClick, 0)
+	if got := f.view.SelectionText(); got != "first line here" {
+		t.Fatalf("triple-click selected %q", got)
+	}
+	if got := string(f.screen.GetClipboardData()); got != "first line here" {
+		t.Fatalf("clipboard %q", got)
+	}
+	// A fourth click is a plain click again: the selection goes.
+	f.click(8, 1, tview.MouseLeftClick, 0)
+	if f.view.SelectionText() != "" {
+		t.Fatal("a later click kept the selection")
+	}
+	// A click on another line right after a double-click is not a triple-click.
+	f.click(3, 2, tview.MouseLeftClick, 0)
+	f.click(3, 2, tview.MouseLeftDoubleClick, 0)
+	f.click(3, 1, tview.MouseLeftClick, 0)
+	if got := f.view.SelectionText(); got != "" {
+		t.Fatalf("click on another line selected %q", got)
+	}
+}
+
+// With a program that reads the mouse, Shift+double-click still selects.
+func TestTerminalViewShiftDoubleClick(t *testing.T) {
+	f := newTermFixture(t)
+	f.draw()
+	f.output("hello world\r\n", "hello world")
+	f.mode("\x1b[?1000h\x1b[?1006h", func(m vterm.Modes) bool { return m.MouseNormal && m.MouseSGR })
+	f.draw()
+	f.click(9, 1, tview.MouseLeftClick, 0)
+	f.click(9, 1, tview.MouseLeftDoubleClick, 0)
+	if got := f.view.SelectionText(); got != "" {
+		t.Fatalf("a forwarded double-click selected %q", got)
+	}
+	f.click(9, 1, tview.MouseLeftClick, tcell.ModShift)
+	f.click(9, 1, tview.MouseLeftDoubleClick, tcell.ModShift)
+	if got := f.view.SelectionText(); got != "world" {
+		t.Fatalf("shift+double-click selected %q", got)
+	}
+}

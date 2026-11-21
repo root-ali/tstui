@@ -2,11 +2,22 @@
 
 All notable changes to tstui. Versions follow [Semantic Versioning](https://semver.org/).
 
-## [0.2.0]
+## [0.3.0] - 2026-11-21
+
+### Added
+
+- Terminal: double-click selects a word and triple-click selects a line. Both copy to the clipboard, like a drag-selection. Paths, `user@host`, hostnames and IP addresses are selected whole. In programs that read the mouse (vim, htop), hold Shift.
+
+## [0.2.0] - 2026-11-21
 
 ### Changed
 
-- `/` opens an interactive search, like `kubens` or `fzf`: the server list narrows as you type. The arrows move the cursor, `enter` connects to the highlighted server, `tab` keeps the filter and `esc` cancels.
+- `/` opens an interactive search, like `kubens` or `fzf`. The server list narrows as you type, with no Enter needed. The footer shows the match count.
+  - `↑` `↓`, `ctrl-p` `ctrl-n` and `pgup` `pgdn` move the cursor while you type.
+  - `enter` connects to the highlighted server (`shift-enter` opens a new session), and `tab` keeps the filter and goes back to the list.
+  - `esc` puts back the previous filter, and `ctrl-u` clears the text.
+  - The bar starts with the current filter and uses the same filter language. Until a half-typed filter parses (`=web`), the last good one stays shown.
+- `:filter expr` still sets a filter in one step. Before this release, `/` opened the palette prefilled with `:filter`.
 
 ## [0.1.0] - 2026-11-19
 
@@ -63,4 +74,6 @@ The first release: a k9s-style terminal UI for Teleport SSH, built on `tsh`.
 - The race detector tests need cgo (`make race`). Release builds do not use cgo.
 - The `.deb` maintainer field is a placeholder (`tstui maintainers`). The release workflow has not run yet, so the first tag is its first real test.
 
+[0.3.0]: https://github.com/root-ali/tstui/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/root-ali/tstui/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/root-ali/tstui/releases/tag/v0.1.0
